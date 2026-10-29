@@ -1,3 +1,6 @@
 dist/
 node_modules/
 ISSUES.md
+
+# Local Netlify folder
+.netlify
