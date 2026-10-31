@@ -38,15 +38,15 @@
         </div>
       </div>
 
-      <!-- QR + WizardConnect -->
+      <!-- QR + BIP-21 -->
       <div class="section center">
         <img :src="qrUrl" alt="QR code" class="qr" />
         <p class="muted qr-hint">Scan with any BCH wallet</p>
         <div class="wizard-box">
-          <p class="muted" style="font-size:12px;margin-bottom:6px">WizardConnect URI</p>
+          <p class="muted" style="font-size:12px;margin-bottom:6px">BIP-21 URI</p>
           <div class="address-row">
-            <span class="address-text" style="font-size:12px;word-break:break-all">{{ wizardUri }}</span>
-            <button class="btn-copy" @click="copy(wizardUri, 'wizard')">{{ copied === 'wizard' ? '✓' : 'Copy' }}</button>
+            <span class="address-text" style="font-size:12px;word-break:break-all">{{ bip21Uri }}</span>
+            <button class="btn-copy" @click="copy(bip21Uri, 'bip21')">{{ copied === 'bip21' ? '✓' : 'Copy' }}</button>
           </div>
         </div>
       </div>
@@ -79,9 +79,10 @@ const copied = ref<string | null>(null)
 
 const isTestnet = computed(() => network.value !== 'mainnet')
 const shortNpub = computed(() => npub ? `${npub.slice(0, 12)}…${npub.slice(-6)}` : '')
-const wizardUri = computed(() => address.value ? `wiz://${address.value.replace('bitcoincash:', '')}` : '')
-const qrUrl = computed(() => wizardUri.value
-  ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wizardUri.value)}`
+// address already has correct prefix (bitcoincash: or bchtest:)
+const bip21Uri = computed(() => address.value ?? '')
+const qrUrl = computed(() => bip21Uri.value
+  ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(bip21Uri.value)}`
   : '')
 
 async function copy(text: string, key: string) {
