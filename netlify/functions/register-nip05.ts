@@ -1,12 +1,10 @@
 // Netlify function: POST /api/register-nip05
-// Body: { name, pubkey, signedEvent }
-// - Verifies the signed Nostr event proves pubkey ownership
-// - Checks a cashlet-did binding exists for the pubkey
+// Body: { name, bchAddress }
+// - Looks up cashlet-did binding for the BCH address on relays
 // - First-come first-served: rejects if name already taken
 // - Writes name→pubkey to Netlify Blobs
 
 import { getStore } from "@netlify/blobs";
-import { verifyEvent } from "nostr-tools";
 import { queryRelays } from "did-beta-bch";
 
 const RELAYS = ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
@@ -19,33 +17,28 @@ export default async (req: Request) => {
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
-  const { name, pubkey, signedEvent } = body;
+  const { name, bchAddress } = body;
 
-  // 1. Validate name format
   if (!name || !VALID_NAME.test(name)) return json({ error: "Invalid name. Use a-z, 0-9, _ or - (max 32 chars)" }, 400);
+  if (!bchAddress || !/^(bitcoincash|bchtest|bchreg):/.test(bchAddress)) return json({ error: "Invalid BCH address" }, 400);
 
-  // 2. Validate pubkey format
-  if (!pubkey || !/^[0-9a-f]{64}$/.test(pubkey)) return json({ error: "Invalid pubkey" }, 400);
+  // Find a cashlet-did binding that contains this BCH address
+  const bindings = await queryRelays(RELAYS, {
+    kinds: [BINDING_KIND],
+    "#t": ["cashlet-did"],
+    "#bch": [bchAddress],
+    limit: 1,
+  });
 
-  // 3. Verify Nostr signature — proves caller controls the privkey for this pubkey
-  if (!signedEvent || !verifyEvent(signedEvent)) return json({ error: "Invalid Nostr signature" }, 401);
-  if (signedEvent.pubkey !== pubkey) return json({ error: "Signature pubkey mismatch" }, 401);
-  if (signedEvent.kind !== 27235) return json({ error: "Expected kind 27235 auth event" }, 401);
+  if (!bindings.length) return json({ error: "No cashlet-did binding found for this address. Publish a BCH–Nostr binding first." }, 403);
 
-  // 4. Check event is fresh (5 min TTL)
-  if (Math.floor(Date.now() / 1000) - signedEvent.created_at > 300)
-    return json({ error: "Auth event expired" }, 401);
+  const pubkey = bindings[0].pubkey;
 
-  // 5. Require a published cashlet-did binding for this pubkey
-  const bindings = await queryRelays(RELAYS, { kinds: [BINDING_KIND], authors: [pubkey], "#t": ["cashlet-did"], limit: 1 });
-  if (!bindings.length) return json({ error: "No cashlet-did binding found. Publish a BCH–Nostr binding first." }, 403);
-
-  // 6. First-come first-served — reject if name already taken
+  // First-come first-served
   const store = getStore("nip05");
   const existing = await store.get(name);
   if (existing && existing !== pubkey) return json({ error: `'${name}' is already registered` }, 409);
 
-  // 7. Write
   await store.set(name, pubkey);
   return json({ ok: true, handle: `${name}@cashlet.netlify.app`, pubkey });
 };

@@ -10,58 +10,57 @@
         </p>
       </div>
 
-      <!-- Step 1: enter name + pubkey -->
+      <!-- Step 1: choose handle -->
       <div class="card">
         <div class="card-title"><span class="step">1</span> Choose a handle</div>
         <div class="input-row">
           <input v-model="name" placeholder="yourname" @input="name = name.toLowerCase().replace(/[^a-z0-9_-]/g,'')" maxlength="32" />
           <span class="handle-suffix">@cashlet.netlify.app</span>
         </div>
-        <div class="input-row" style="margin-top:12px">
-          <input v-model="npub" placeholder="npub1… or hex pubkey" />
-        </div>
         <p class="hint">Must have a published cashlet-did binding. <router-link to="/verify">Verify yours →</router-link></p>
       </div>
 
-      <!-- Step 2: sign with Nostr key -->
-      <div class="card" :class="{ disabled: !name || !npub }">
-        <div class="card-title"><span class="step">2</span> Prove key ownership</div>
-        <p class="card-desc">
-          Sign a one-time challenge with your Nostr key to prove you control this npub.
-          Use a NIP-07 browser extension (Alby, nos2x) or paste your nsec below.
-        </p>
+      <!-- Step 2: connect wallet via WizardConnect -->
+      <div class="card" :class="{ disabled: !name }">
+        <div class="card-title"><span class="step">2</span> Connect your wallet</div>
+        <p class="card-desc">Scan with your BCH wallet to prove address ownership.</p>
 
-        <div class="sign-options">
-          <button class="btn-primary" @click="signWithExtension" :disabled="!name || !npub || signing">
-            <span v-if="signing" class="spin">⟳</span>
-            <span v-else>Sign with extension (NIP-07)</span>
+        <div v-if="!walletConnected">
+          <div v-if="wizUri" class="qr-wrap">
+            <img :src="qrUrl" alt="WizardConnect QR" class="qr" />
+            <div class="address-row" style="margin-top:8px">
+              <span class="address-text" style="font-size:11px;word-break:break-all">{{ wizUri }}</span>
+              <button class="btn-copy" @click="copyUri">{{ copiedUri ? '✓' : 'Copy' }}</button>
+            </div>
+          </div>
+          <button v-else class="btn-primary" @click="startWizard" :disabled="!name || connecting">
+            <span v-if="connecting" class="spin">⟳</span>
+            <span v-else>Connect wallet</span>
           </button>
-          <div class="divider">or</div>
-          <input v-model="nsec" placeholder="nsec1… (stays in browser, never sent)" type="password" />
-          <button class="btn-secondary" @click="signWithNsec" :disabled="!nsec || !name || !npub || signing">
-            Sign with nsec
-          </button>
+          <div v-if="connectError" class="result-error">✗ {{ connectError }}</div>
         </div>
 
-        <div v-if="signError" class="result-error">✗ {{ signError }}</div>
-        <div v-if="signedEvent" class="result-ok">✓ Signed — ready to register</div>
+        <div v-else class="result-ok">
+          <div class="check-row"><span class="check">✓</span> Wallet connected — {{ walletName }}</div>
+          <div class="check-row"><span class="check">✓</span> BCH address: <span class="mono">{{ bchAddress }}</span></div>
+        </div>
       </div>
 
       <!-- Step 3: register -->
-      <div class="card" :class="{ disabled: !signedEvent }">
+      <div class="card" :class="{ disabled: !walletConnected }">
         <div class="card-title"><span class="step">3</span> Register</div>
-        <button class="btn-primary" @click="register" :disabled="!signedEvent || registering">
+        <button class="btn-primary" @click="register" :disabled="!walletConnected || registering">
           <span v-if="registering" class="spin">⟳</span>
           <span v-else>Claim {{ name ? name + '@cashlet.netlify.app' : 'handle' }}</span>
         </button>
         <div v-if="registerError" class="result-error">✗ {{ registerError }}</div>
         <div v-if="registered" class="result-ok">
           <div class="check-row"><span class="check">✓</span> Handle registered: <strong>{{ registered }}</strong></div>
-          <div class="check-row"><span class="check">✓</span> Anyone can now pay you via <code>resolveByNip05('{{ registered }}')</code></div>
+          <div class="check-row"><span class="check">✓</span> Resolvable via <code>resolveByNip05('{{ registered }}')</code></div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,255,163,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:12px;color:#8293a2">NIP-05 handle:</span>
             <code style="flex:1;font-size:11px">{{ registered }}</code>
-            <button class="btn-copy" @click="copyPayUrl">{{ copiedPay ? '✓' : 'Copy' }}</button>
+            <button class="btn-copy" @click="copyHandle">{{ copiedHandle ? '✓' : 'Copy' }}</button>
           </div>
         </div>
       </div>
@@ -70,82 +69,97 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { nip19, finalizeEvent } from 'nostr-tools'
+import { ref, computed } from 'vue'
+import { initiateDappRelay } from '@wizardconnect/core'
+import { DappConnectionManager } from '@wizardconnect/dapp'
+import { encodeCashAddress, hash160, CashAddressType } from '@bitauth/libauth'
 
-const name    = ref('')
-const npub    = ref('')
-const nsec    = ref('')
-const signing = ref(false)
-const signError = ref('')
-const signedEvent = ref<any>(null)
-const registering = ref(false)
+const name         = ref('')
+const connecting   = ref(false)
+const connectError = ref('')
+const wizUri       = ref('')
+const walletConnected = ref(false)
+const walletName   = ref('')
+const bchAddress   = ref('')
+const pubkeyHex    = ref('')
+const registering  = ref(false)
 const registerError = ref('')
-const registered = ref('')
-const copiedPay = ref(false)
+const registered   = ref('')
+const copiedUri    = ref(false)
+const copiedHandle = ref(false)
 
-function copyPayUrl() {
+let relay: ReturnType<typeof initiateDappRelay> | null = null
+let mgr: DappConnectionManager | null = null
+
+const qrUrl = computed(() =>
+  wizUri.value ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wizUri.value)}` : ''
+)
+
+function copyUri() {
+  navigator.clipboard.writeText(wizUri.value)
+  copiedUri.value = true; setTimeout(() => { copiedUri.value = false }, 2000)
+}
+function copyHandle() {
   navigator.clipboard.writeText(registered.value)
-  copiedPay.value = true
-  setTimeout(() => { copiedPay.value = false }, 2000)
+  copiedHandle.value = true; setTimeout(() => { copiedHandle.value = false }, 2000)
 }
 
-function resolvedPubkey(): string | null {
-  const v = npub.value.trim()
-  if (/^[0-9a-f]{64}$/.test(v)) return v
+async function startWizard() {
+  connectError.value = ''; connecting.value = true
   try {
-    const d = nip19.decode(v)
-    return d.type === 'npub' ? d.data as string : null
-  } catch { return null }
-}
+    mgr = new DappConnectionManager('Cashlet Landing', 'https://cashlet.netlify.app/favicon.ico', { session: false })
 
-function buildAuthTemplate() {
-  return {
-    kind: 27235,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [["u", "/api/register-nip05"], ["method", "POST"]],
-    content: `cashlet-did/nip05-register\n${name.value}`,
+    relay = initiateDappRelay((payload) => {
+      mgr!.updateConnection(payload.client, payload.status)
+    })
+    mgr.attachRelay(relay)
+    wizUri.value = relay.uri
+
+    mgr.on('walletready', (msg) => {
+      walletName.value = msg.wallet_name ?? 'Wallet'
+      // derive first receive address (childIndex=0, index=0)
+      const pubkey = mgr!.getPubkey(0, 0n)
+      if (pubkey) {
+        const pkh = hash160(pubkey)
+        const result = encodeCashAddress({ prefix: 'bitcoincash', type: CashAddressType.p2pkh, payload: pkh })
+        if (typeof result === 'object') {
+          bchAddress.value = result.address
+          pubkeyHex.value = Array.from(pubkey).map(b => b.toString(16).padStart(2, '0')).join('')
+        }
+      }
+      walletConnected.value = true
+      wizUri.value = ''
+    })
+
+    mgr.on('disconnect', () => {
+      walletConnected.value = false
+      wizUri.value = ''
+      relay?.cleanup()
+    })
+  } catch (e: any) {
+    connectError.value = e.message ?? 'Failed to start WizardConnect'
+  } finally {
+    connecting.value = false
   }
-}
-
-async function signWithExtension() {
-  signError.value = ''; signing.value = true
-  try {
-    const win = window as any
-    if (!win.nostr) throw new Error('No NIP-07 extension found. Install Alby or nos2x.')
-    signedEvent.value = await win.nostr.signEvent(buildAuthTemplate())
-  } catch (e: any) {
-    signError.value = e.message ?? 'Signing failed'
-  } finally { signing.value = false }
-}
-
-async function signWithNsec() {
-  signError.value = ''; signing.value = true
-  try {
-    const decoded = nip19.decode(nsec.value.trim())
-    if (decoded.type !== 'nsec') throw new Error('Invalid nsec')
-    signedEvent.value = finalizeEvent(buildAuthTemplate(), decoded.data as Uint8Array)
-  } catch (e: any) {
-    signError.value = e.message ?? 'Signing failed'
-  } finally { signing.value = false }
 }
 
 async function register() {
   registerError.value = ''; registering.value = true
   try {
-    const pubkey = resolvedPubkey()
-    if (!pubkey) throw new Error('Invalid npub')
     const res = await fetch('/api/register-nip05', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.value, pubkey, signedEvent: signedEvent.value }),
+      body: JSON.stringify({ name: name.value, bchAddress: bchAddress.value }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Registration failed')
     registered.value = data.handle
+    relay?.cleanup()
   } catch (e: any) {
     registerError.value = e.message ?? 'Registration failed'
-  } finally { registering.value = false }
+  } finally {
+    registering.value = false
+  }
 }
 </script>
 
@@ -167,20 +181,18 @@ h1 { font-size: 28px; font-weight: 700; color: #edf4f8; margin: 0 0 12px; }
 .handle-suffix { color: var(--soft); font-size: 14px; white-space: nowrap; }
 .hint { color: var(--soft); font-size: 12px; margin-top: 10px; }
 .hint a { color: var(--green); }
-.sign-options { display: flex; flex-direction: column; gap: 10px; }
-.divider { text-align: center; color: var(--soft); font-size: 12px; }
-.btn-primary { background: var(--green); color: #070b10; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.qr { width: 180px; height: 180px; border-radius: 8px; }
+.address-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.address-text { flex: 1; color: var(--soft); }
+.btn-primary { background: var(--green); color: #070b10; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-secondary { background: transparent; border: 1px solid var(--line); color: #edf4f8; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
-.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-copy { background: transparent; border: 1px solid var(--line); color: #edf4f8; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .result-ok { background: rgba(0,255,163,0.06); border: 1px solid rgba(0,255,163,0.2); border-radius: 8px; padding: 12px 16px; margin-top: 12px; color: var(--green); font-size: 13px; }
 .result-error { background: rgba(255,80,80,0.08); border: 1px solid rgba(255,80,80,0.2); border-radius: 8px; padding: 12px 16px; margin-top: 12px; color: #ff6b6b; font-size: 13px; }
-.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .check { color: var(--green); }
-.action-link { color: var(--green); font-size: 13px; font-weight: 600; text-decoration: none; }
-.action-link:hover { text-decoration: underline; }
-.btn-copy { background: transparent; border: 1px solid var(--line); color: #edf4f8; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.check { color: var(--green); }
+.mono { font-family: monospace; font-size: 11px; word-break: break-all; }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 12px; }

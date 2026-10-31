@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
+    "@wizardconnect/core": "^0.2.5",
+    "@wizardconnect/dapp": "^0.2.2",
     "did-beta-bch": "^1.1.0",
     "nostr-tools": "^2.25.2",
     "shiki": "^4.5.0",
