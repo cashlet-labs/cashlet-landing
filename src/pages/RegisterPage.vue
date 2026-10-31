@@ -58,6 +58,14 @@
         <div v-if="registered" class="result-ok">
           <div class="check-row"><span class="check">✓</span> Handle registered: <strong>{{ registered }}</strong></div>
           <div class="check-row"><span class="check">✓</span> Anyone can now pay you via <code>resolveByNip05('{{ registered }}')</code></div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,255,163,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#8293a2">Payment link:</span>
+            <code style="flex:1;font-size:11px">{{ payUrl }}</code>
+            <button class="btn-copy" @click="copyPayUrl">{{ copiedPay ? '✓' : 'Copy' }}</button>
+          </div>
+          <div style="margin-top:8px">
+            <router-link :to="`/pay/${registered}`" class="action-link">Open payment page →</router-link>
+          </div>
         </div>
       </div>
     </div>
@@ -65,8 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { nip19, finalizeEvent, generateSecretKey } from 'nostr-tools'
+import { ref, computed } from 'vue'import { nip19, finalizeEvent, generateSecretKey } from 'nostr-tools'
 
 const name    = ref('')
 const npub    = ref('')
@@ -77,6 +84,14 @@ const signedEvent = ref<any>(null)
 const registering = ref(false)
 const registerError = ref('')
 const registered = ref('')
+const copiedPay = ref(false)
+const payUrl = computed(() => registered.value ? `${location.origin}/pay/${registered.value}` : '')
+
+function copyPayUrl() {
+  navigator.clipboard.writeText(payUrl.value)
+  copiedPay.value = true
+  setTimeout(() => { copiedPay.value = false }, 2000)
+}
 
 function resolvedPubkey(): string | null {
   const v = npub.value.trim()
@@ -164,6 +179,10 @@ h1 { font-size: 28px; font-weight: 700; color: #edf4f8; margin: 0 0 12px; }
 .result-ok { background: rgba(0,255,163,0.06); border: 1px solid rgba(0,255,163,0.2); border-radius: 8px; padding: 12px 16px; margin-top: 12px; color: var(--green); font-size: 13px; }
 .result-error { background: rgba(255,80,80,0.08); border: 1px solid rgba(255,80,80,0.2); border-radius: 8px; padding: 12px 16px; margin-top: 12px; color: #ff6b6b; font-size: 13px; }
 .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.check { color: var(--green); }
+.action-link { color: var(--green); font-size: 13px; font-weight: 600; text-decoration: none; }
+.action-link:hover { text-decoration: underline; }
+.btn-copy { background: transparent; border: 1px solid var(--line); color: #edf4f8; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .check { color: var(--green); }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

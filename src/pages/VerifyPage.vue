@@ -44,6 +44,9 @@
           <div class="check-row"><span class="check">✓</span> Nostr event signature valid — npub ownership proven</div>
           <div class="check-row"><span class="check">✓</span> Binding payload integrity confirmed</div>
           <div class="check-row"><span class="check">✓</span> Not revoked — no NIP-09 deletion event found</div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,255,163,0.15)">
+            <router-link :to="`/pay/${resolved?.pubkey}`" class="action-link">Pay this identity →</router-link>
+          </div>
         </div>
         <div v-if="bindingVerified === false" class="result-error">✗ {{ verifyError }}</div>
       </div>
@@ -55,6 +58,7 @@
           Generate a one-time challenge. The identity owner signs it with their BCH key in Cashlet
           (Identity → Verify → Prove your own identity), then pastes the proof here.
         </p>
+        <p class="card-note">⚠ Requires the Cashlet extension — signing uses the BCH private key.</p>
         <button class="btn-secondary" @click="generateChallenge" :disabled="!bindingVerified">
           Generate Challenge
         </button>
@@ -103,9 +107,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity, DEFAULT_RELAYS } from 'did-beta-bch'
 
+const route = useRoute()
 const npub = ref('')
 const resolving = ref(false)
 const resolveError = ref('')
@@ -113,6 +119,11 @@ const resolved = ref<ResolvedIdentity | null>(null)
 
 const verifying = ref(false)
 const bindingVerified = ref<boolean | null>(null)
+
+onMounted(() => {
+  const q = route.query.npub as string | undefined
+  if (q) { npub.value = q; resolve() }
+})
 const verifyError = ref('')
 
 const nonce = ref('')
@@ -296,6 +307,9 @@ textarea:focus { outline: 2px solid var(--green); border-color: transparent; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #edf4f8; margin-bottom: 6px; }
 .check-row:last-child { margin-bottom: 0; }
 .check { color: var(--green); font-weight: 700; }
+.action-link { color: var(--green); font-size: 13px; font-weight: 600; text-decoration: none; }
+.action-link:hover { text-decoration: underline; }
+.card-note { font-size: 12px; color: var(--amber, #fbbf24); margin-bottom: 14px; }
 
 .nonce-box {
   margin-top: 10px;

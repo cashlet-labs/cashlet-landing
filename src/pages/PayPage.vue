@@ -46,28 +46,32 @@
 
       <!-- Connect options -->
       <div class="section">
-        <label class="section-label">Connect your wallet</label>
+        <label class="section-label">Pay with your wallet</label>
         <div class="connect-options">
           <a :href="cashletUri" class="connect-btn btn-primary">
             Open in Cashlet
           </a>
           <button class="connect-btn btn-secondary" @click="showWizard = !showWizard">
-            WizardConnect
+            Any wallet (WizardConnect)
           </button>
           <a :href="bip21Uri" class="connect-btn btn-secondary">
-            BIP21 / Any wallet
+            BIP-21 / copy address
           </a>
         </div>
 
         <!-- WizardConnect URI -->
         <div v-if="showWizard" class="wizard-box">
-          <p class="muted" style="font-size:13px;margin-bottom:8px">WizardConnect URI — paste into your wallet</p>
+          <p class="muted" style="font-size:13px;margin-bottom:8px">Paste this URI into any WizardConnect-compatible wallet</p>
           <div class="address-row">
             <span class="address-text" style="font-size:12px;word-break:break-all">{{ wizardUri }}</span>
             <button class="btn-copy" @click="copy(wizardUri, 'wizard')">
               {{ copied === 'wizard' ? '✓' : 'Copy' }}
             </button>
           </div>
+        </div>
+
+        <div style="margin-top:14px">
+          <router-link :to="`/verify?npub=${npub}`" class="verify-link">Verify this identity →</router-link>
         </div>
       </div>
     </div>
@@ -228,5 +232,7 @@ onMounted(async () => {
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-icon { font-size: 32px; color: var(--red); }
 .muted { color: var(--muted); font-size: 14px; }
+.verify-link { color: var(--green); font-size: 13px; font-weight: 600; text-decoration: none; }
+.verify-link:hover { text-decoration: underline; }
 .npub-display { font-size: 12px; color: var(--muted); font-family: monospace; word-break: break-all; margin-top: 8px; }
 </style>
