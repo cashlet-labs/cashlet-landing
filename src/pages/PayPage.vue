@@ -76,12 +76,9 @@ const state = ref<'loading' | 'found' | 'notfound'>('loading')
 const address = ref<string | null>(null)
 const network = ref<string>('mainnet')
 const copied = ref<string | null>(null)
-const showWizard = ref(false)
 
 const isTestnet = computed(() => network.value !== 'mainnet')
 const shortNpub = computed(() => npub ? `${npub.slice(0, 12)}…${npub.slice(-6)}` : '')
-const bip21Uri = computed(() => address.value ? `bitcoincash:${address.value.replace('bitcoincash:', '')}` : '')
-const cashletUri = computed(() => address.value ? `https://cashlet.netlify.app/pay/${npub}` : '')
 const wizardUri = computed(() => address.value ? `wiz://${address.value.replace('bitcoincash:', '')}` : '')
 const qrUrl = computed(() => wizardUri.value
   ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wizardUri.value)}`
