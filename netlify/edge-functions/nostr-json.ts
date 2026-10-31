@@ -1,38 +1,26 @@
 // Netlify edge function: serves NIP-05 /.well-known/nostr.json
+// Reads registrations from Netlify Blobs (written by /api/register-nip05)
+import { getStore } from "@netlify/blobs";
 
 const RELAYS = ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
 
-export default async (request: Request) => {
-  const url = new URL(request.url);
-  const name = url.searchParams.get("name");
+const CORS = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+};
 
-  // CORS required by NIP-05
-  const headers = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-  };
+export default async (request: Request, context: any) => {
+  const name = new URL(request.url).searchParams.get("name")?.toLowerCase();
+  if (!name) return new Response(JSON.stringify({ names: {}, relays: {} }), { headers: CORS });
 
-  if (!name) {
-    return new Response(JSON.stringify({ names: {}, relays: {} }), { headers });
-  }
+  const store = getStore({ name: "nip05", consistency: "strong", ...context });
+  const pubkey = await store.get(name);
 
-  // Look up stored npub→pubkey mapping from relay
-  // For cashlet.netlify.app we resolve the "cashlet" name from a well-known npub
-  // stored as a kind-0 metadata event with nip05 field, or fall back to env var
-  const knownPubkey = Netlify.env.get(`NIP05_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`);
-
-  if (!knownPubkey) {
-    return new Response(JSON.stringify({ names: {}, relays: {} }), { headers });
-  }
+  if (!pubkey) return new Response(JSON.stringify({ names: {}, relays: {} }), { headers: CORS });
 
   return new Response(
-    JSON.stringify({
-      names: { [name]: knownPubkey },
-      relays: {
-        [knownPubkey]: RELAYS,
-      },
-    }),
-    { headers },
+    JSON.stringify({ names: { [name]: pubkey }, relays: { [pubkey]: RELAYS } }),
+    { headers: CORS },
   );
 };
 

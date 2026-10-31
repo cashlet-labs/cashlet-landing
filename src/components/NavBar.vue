@@ -7,6 +7,7 @@
       </router-link>
       <div class="nav-links">
         <router-link to="/verify">Verify Identity</router-link>
+        <router-link to="/register">Get a Handle</router-link>
         <router-link to="/docs">Docs</router-link>
         <a href="https://github.com" target="_blank">GitHub</a>
         <a href="/#download" class="btn-nav">Get Extension</a>
