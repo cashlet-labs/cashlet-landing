@@ -23,12 +23,13 @@
       <!-- Step 2: connect wallet via WizardConnect -->
       <div class="card" :class="{ disabled: !name }">
         <div class="card-title"><span class="step">2</span> Connect your wallet</div>
-        <p class="card-desc">Scan with your BCH wallet to prove address ownership.</p>
+        <p class="card-desc">Scan with your BCH wallet. The wallet proves key ownership by completing the encrypted handshake.</p>
 
         <div v-if="!walletConnected">
           <div v-if="wizUri" class="qr-wrap">
             <img :src="qrUrl" alt="WizardConnect QR" class="qr" />
-            <div class="address-row" style="margin-top:8px">
+            <p class="card-desc" style="margin-top:8px;margin-bottom:4px;text-align:center">Waiting for wallet to connect…</p>
+            <div class="address-row" style="margin-top:4px">
               <span class="address-text" style="font-size:11px;word-break:break-all">{{ wizUri }}</span>
               <button class="btn-copy" @click="copyUri">{{ copiedUri ? '✓' : 'Copy' }}</button>
             </div>
@@ -42,7 +43,7 @@
 
         <div v-else class="result-ok">
           <div class="check-row"><span class="check">✓</span> Wallet connected — {{ walletName }}</div>
-          <div class="check-row"><span class="check">✓</span> BCH address: <span class="mono">{{ bchAddress }}</span></div>
+          <div class="check-row"><span class="check">✓</span> BCH address proven: <span class="mono">{{ bchAddress }}</span></div>
         </div>
       </div>
 
