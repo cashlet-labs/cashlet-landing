@@ -43,6 +43,7 @@
           <div class="check-row"><span class="check">✓</span> BCH signature valid — address ownership proven</div>
           <div class="check-row"><span class="check">✓</span> Nostr event signature valid — npub ownership proven</div>
           <div class="check-row"><span class="check">✓</span> Binding payload integrity confirmed</div>
+          <div class="check-row"><span class="check">✓</span> Not revoked — no NIP-09 deletion event found</div>
         </div>
         <div v-if="bindingVerified === false" class="result-error">✗ {{ verifyError }}</div>
       </div>
@@ -103,7 +104,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity } from 'did-beta-bch'
+import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity, DEFAULT_RELAYS } from 'did-beta-bch'
 
 const npub = ref('')
 const resolving = ref(false)

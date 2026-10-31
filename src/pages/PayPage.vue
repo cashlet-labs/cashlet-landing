@@ -77,10 +77,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { resolveIdentity } from 'did-beta-bch'
+import { resolveIdentity, resolveByNip05 } from 'did-beta-bch'
 
 const route = useRoute()
 const npub = route.params.npub as string
+
+// Support NIP-05 handles passed as npub param (e.g. /pay/alice@cashlet.com)
+const isNip05 = npub.includes('@')
 
 const state = ref<'loading' | 'found' | 'notfound'>('loading')
 const address = ref<string | null>(null)
@@ -105,10 +108,16 @@ async function copy(text: string, key: string) {
 
 onMounted(async () => {
   try {
-    const identity = await resolveIdentity(npub)
-    if (!identity) { state.value = 'notfound'; return }
-    address.value = identity.bchAddress
-    network.value = identity.network
+    let addr: string | null = null
+    if (isNip05) {
+      addr = await resolveByNip05(npub)
+    } else {
+      const identity = await resolveIdentity(npub)
+      addr = identity?.bchAddress ?? null
+      if (identity) network.value = identity.network
+    }
+    if (!addr) { state.value = 'notfound'; return }
+    address.value = addr
     state.value = 'found'
   } catch {
     state.value = 'notfound'
