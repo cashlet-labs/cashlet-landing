@@ -38,41 +38,21 @@
         </div>
       </div>
 
-      <!-- QR -->
+      <!-- QR + WizardConnect -->
       <div class="section center">
         <img :src="qrUrl" alt="QR code" class="qr" />
         <p class="muted qr-hint">Scan with any BCH wallet</p>
-      </div>
-
-      <!-- Connect options -->
-      <div class="section">
-        <label class="section-label">Pay with your wallet</label>
-        <div class="connect-options">
-          <a :href="cashletUri" class="connect-btn btn-primary">
-            Open in Cashlet
-          </a>
-          <button class="connect-btn btn-secondary" @click="showWizard = !showWizard">
-            Any wallet (WizardConnect)
-          </button>
-          <a :href="bip21Uri" class="connect-btn btn-secondary">
-            BIP-21 / copy address
-          </a>
-        </div>
-
-        <!-- WizardConnect URI -->
-        <div v-if="showWizard" class="wizard-box">
-          <p class="muted" style="font-size:13px;margin-bottom:8px">Paste this URI into any WizardConnect-compatible wallet</p>
+        <div class="wizard-box">
+          <p class="muted" style="font-size:12px;margin-bottom:6px">WizardConnect URI</p>
           <div class="address-row">
             <span class="address-text" style="font-size:12px;word-break:break-all">{{ wizardUri }}</span>
-            <button class="btn-copy" @click="copy(wizardUri, 'wizard')">
-              {{ copied === 'wizard' ? '✓' : 'Copy' }}
-            </button>
+            <button class="btn-copy" @click="copy(wizardUri, 'wizard')">{{ copied === 'wizard' ? '✓' : 'Copy' }}</button>
           </div>
         </div>
+      </div>
 
-        <div style="margin-top:14px">
-          <router-link :to="`/verify?npub=${npub}`" class="verify-link">Verify this identity →</router-link>
-        </div>
+      <div class="section">
+        <router-link :to="`/verify?npub=${npub}`" class="verify-link">Verify this identity →</router-link>
       </div>
     </div>
   </div>
@@ -102,9 +82,9 @@ const isTestnet = computed(() => network.value !== 'mainnet')
 const shortNpub = computed(() => npub ? `${npub.slice(0, 12)}…${npub.slice(-6)}` : '')
 const bip21Uri = computed(() => address.value ? `bitcoincash:${address.value.replace('bitcoincash:', '')}` : '')
 const cashletUri = computed(() => address.value ? `https://cashlet.netlify.app/pay/${npub}` : '')
-const wizardUri = computed(() => address.value ? `wizardconnect:${address.value}` : '')
-const qrUrl = computed(() => address.value
-  ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(bip21Uri.value)}`
+const wizardUri = computed(() => address.value ? `wiz://${address.value.replace('bitcoincash:', '')}` : '')
+const qrUrl = computed(() => wizardUri.value
+  ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wizardUri.value)}`
   : '')
 
 async function copy(text: string, key: string) {
