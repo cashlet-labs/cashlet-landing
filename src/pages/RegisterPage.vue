@@ -59,12 +59,9 @@
           <div class="check-row"><span class="check">✓</span> Handle registered: <strong>{{ registered }}</strong></div>
           <div class="check-row"><span class="check">✓</span> Anyone can now pay you via <code>resolveByNip05('{{ registered }}')</code></div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,255,163,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:12px;color:#8293a2">Payment link:</span>
-            <code style="flex:1;font-size:11px">{{ payUrl }}</code>
+            <span style="font-size:12px;color:#8293a2">NIP-05 handle:</span>
+            <code style="flex:1;font-size:11px">{{ registered }}</code>
             <button class="btn-copy" @click="copyPayUrl">{{ copiedPay ? '✓' : 'Copy' }}</button>
-          </div>
-          <div style="margin-top:8px">
-            <router-link :to="`/pay/${registered}`" class="action-link">Open payment page →</router-link>
           </div>
         </div>
       </div>
@@ -73,7 +70,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'import { nip19, finalizeEvent, generateSecretKey } from 'nostr-tools'
+import { ref } from 'vue'
+import { nip19, finalizeEvent } from 'nostr-tools'
 
 const name    = ref('')
 const npub    = ref('')
@@ -85,10 +83,9 @@ const registering = ref(false)
 const registerError = ref('')
 const registered = ref('')
 const copiedPay = ref(false)
-const payUrl = computed(() => registered.value ? `${location.origin}/pay/${registered.value}` : '')
 
 function copyPayUrl() {
-  navigator.clipboard.writeText(payUrl.value)
+  navigator.clipboard.writeText(registered.value)
   copiedPay.value = true
   setTimeout(() => { copiedPay.value = false }, 2000)
 }

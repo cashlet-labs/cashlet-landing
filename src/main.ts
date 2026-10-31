@@ -5,7 +5,6 @@ import App from './App.vue'
 import HomePage from './pages/HomePage.vue'
 import VerifyPage from './pages/VerifyPage.vue'
 import DocsPage from './pages/DocsPage.vue'
-import PayPage from './pages/PayPage.vue'
 import RegisterPage from './pages/RegisterPage.vue'
 
 const router = createRouter({
@@ -15,7 +14,6 @@ const router = createRouter({
     { path: '/verify', component: VerifyPage },
     { path: '/docs', component: DocsPage },
     { path: '/register', component: RegisterPage },
-    { path: '/pay/:npub', component: PayPage },
   ],
 })
 
