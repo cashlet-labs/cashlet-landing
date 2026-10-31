@@ -81,6 +81,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { nip19 } from 'nostr-tools'
 import { resolveIdentity, resolveByNip05 } from 'did-beta-bch'
 
 const route = useRoute()
@@ -88,6 +89,8 @@ const npub = route.params.npub as string
 
 // Support NIP-05 handles passed as npub param (e.g. /pay/alice@cashlet.com)
 const isNip05 = npub.includes('@')
+// Normalise hex pubkey → npub so resolveIdentity always gets bech32
+const resolveKey = /^[0-9a-f]{64}$/.test(npub) ? nip19.npubEncode(npub) : npub
 
 const state = ref<'loading' | 'found' | 'notfound'>('loading')
 const address = ref<string | null>(null)
@@ -116,7 +119,7 @@ onMounted(async () => {
     if (isNip05) {
       addr = await resolveByNip05(npub)
     } else {
-      const identity = await resolveIdentity(npub)
+      const identity = await resolveIdentity(resolveKey)
       addr = identity?.bchAddress ?? null
       if (identity) network.value = identity.network
     }

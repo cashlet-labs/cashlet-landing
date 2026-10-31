@@ -45,7 +45,7 @@
           <div class="check-row"><span class="check">✓</span> Binding payload integrity confirmed</div>
           <div class="check-row"><span class="check">✓</span> Not revoked — no NIP-09 deletion event found</div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,255,163,0.15)">
-            <router-link :to="`/pay/${resolved?.pubkey}`" class="action-link">Pay this identity →</router-link>
+            <router-link :to="`/pay/${resolved ? nip19.npubEncode(resolved.pubkey) : ''}`" class="action-link">Pay this identity →</router-link>
           </div>
         </div>
         <div v-if="bindingVerified === false" class="result-error">✗ {{ verifyError }}</div>
@@ -109,7 +109,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity, DEFAULT_RELAYS } from 'did-beta-bch'
+import { nip19 } from 'nostr-tools'
+import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity } from 'did-beta-bch'
 
 const route = useRoute()
 const npub = ref('')
