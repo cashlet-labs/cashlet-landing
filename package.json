@@ -9,7 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "did-beta-bch": "^1.0.1",
+    "@bitauth/libauth": "^3.0.0",
+    "did-beta-bch": "^1.0.2",
+    "nostr-tools": "^2.25.2",
+    "shiki": "^4.5.0",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0"
   },
