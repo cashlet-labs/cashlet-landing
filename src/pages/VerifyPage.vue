@@ -6,7 +6,7 @@
         <h1>Verify a Cashlet Identity</h1>
         <p class="sub">
           Cryptographically verify the binding between a Nostr identity and a Bitcoin Cash address.
-          No servers. No central authority. Runs entirely in your browser.
+          No central identity server or authority. Verification runs in your browser and queries public relays.
         </p>
       </div>
 
@@ -53,9 +53,10 @@
         <div class="card-title"><span class="step">3</span> Live Authentication</div>
         <p class="card-desc">
           Generate a one-time challenge. The identity owner signs it with their BCH key in Cashlet
-          (Identity → Verify → Prove your own identity), then pastes the proof here.
+          (Identity → Advanced → Prove your identity), then pastes the proof here. Cashlet's own
+          wallet is the default signer; an optional connected wallet can also sign.
         </p>
-        <p class="card-note">⚠ Requires the Cashlet extension — signing uses the BCH private key.</p>
+        <p class="card-note">The verifier checks the bound BCH address and the fixed audience https://cashlet.netlify.app/verify. Challenges expire after five minutes.</p>
         <button class="btn-secondary" @click="generateChallenge" :disabled="!bindingVerified">
           Generate Challenge
         </button>
@@ -109,6 +110,7 @@ import { useRoute } from 'vue-router'
 import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity } from 'did-beta-bch'
 
 const route = useRoute()
+const verifierAudience = 'https://cashlet.netlify.app/verify'
 const npub = ref('')
 const resolving = ref(false)
 const resolveError = ref('')
@@ -124,6 +126,7 @@ onMounted(() => {
 const verifyError = ref('')
 
 const nonce = ref('')
+const challengeIssuedAt = ref<number | null>(null)
 const copied = ref(false)
 const proofJson = ref('')
 const authVerifying = ref(false)
@@ -162,6 +165,7 @@ function generateChallenge() {
   const arr = new Uint8Array(16)
   crypto.getRandomValues(arr)
   nonce.value = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
+  challengeIssuedAt.value = Math.floor(Date.now() / 1000)
   proofJson.value = ''; authVerified.value = null
 }
 
@@ -175,9 +179,21 @@ async function verifyChallenge() {
   authError.value = ''; authVerified.value = null; authVerifying.value = true
   try {
     const proof = JSON.parse(proofJson.value)
-    const ok = verifyChallengeProof(proof, nonce.value)
+    if (!resolved.value || proof.address !== resolved.value.bchAddress)
+      throw new Error('Proof address does not match the BCH address in the published identity')
+    if (challengeIssuedAt.value === null)
+      throw new Error('Generate a fresh challenge before verifying the proof')
+    const ok = verifyChallengeProof(
+      proof,
+      nonce.value,
+      verifierAudience,
+      challengeIssuedAt.value,
+    )
     if (!ok) throw new Error('Signature does not match bound BCH address')
     authVerified.value = true
+    nonce.value = ''
+    challengeIssuedAt.value = null
+    proofJson.value = ''
   } catch (e: any) {
     authError.value = e.message ?? 'Verification failed'
     authVerified.value = false

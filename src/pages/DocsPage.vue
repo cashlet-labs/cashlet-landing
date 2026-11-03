@@ -12,7 +12,7 @@
       <section id="overview">
         <h1>cashlet-did</h1>
         <p class="lead">Framework-agnostic TypeScript library for BCH–Nostr decentralised identity. Works in browsers, Node.js, and Chrome extensions.</p>
-        <pre class="install">npm install cashlet-did</pre>
+        <pre class="install">npm install did-beta-bch@2.0.1</pre>
         <div class="badges">
           <span class="badge">TypeScript</span>
           <span class="badge">ESM</span>
@@ -24,7 +24,7 @@
       <section id="quickstart">
         <h2>Quick start — pay by handle</h2>
         <p>Resolve a BCH address from any Nostr public key in one call:</p>
-        <pre>import { resolveAddress } from 'cashlet-did'
+        <pre>import { resolveAddress } from 'did-beta-bch'
 
 const address = await resolveAddress('npub1...')
 if (address) {
@@ -40,7 +40,7 @@ if (address) {
         <h3>resolveAddress</h3>
         <p>Returns the BCH address for an npub, or <code>null</code> if no binding found.</p>
         <p class="note">The resolved address is always a token-aware <code>bitcoincash:z...</code> address (not the legacy <code>q</code> prefix). It can receive BCH, CashTokens (fungible), and NFTs without any conversion.</p>
-        <pre>import { resolveAddress } from 'cashlet-did'
+        <pre>import { resolveAddress } from 'did-beta-bch'
 
 const address = await resolveAddress('npub1abc...')
 // → "bitcoincash:zq..."  or  null
@@ -48,7 +48,7 @@ const address = await resolveAddress('npub1abc...')
 
         <h3>resolveIdentity</h3>
         <p>Full resolution — returns binding metadata alongside the address.</p>
-        <pre>import { resolveIdentity } from 'cashlet-did'
+        <pre>import { resolveIdentity } from 'did-beta-bch'
 
 const identity = await resolveIdentity('npub1abc...')
 // identity.bchAddress  → "bitcoincash:zq..."
@@ -58,7 +58,7 @@ const identity = await resolveIdentity('npub1abc...')
 
         <h3>resolveIdentityChain</h3>
         <p>Returns the full key rotation history, newest first.</p>
-        <pre>import { resolveIdentityChain } from 'cashlet-did'
+        <pre>import { resolveIdentityChain } from 'did-beta-bch'
 
 const chain = await resolveIdentityChain('npub1abc...')
 // chain[0] → current binding
@@ -70,11 +70,12 @@ const chain = await resolveIdentityChain('npub1abc...')
 
         <h3>verifyIdentity</h3>
         <p>Verifies both the Nostr event signature and the BCH address ownership proof.</p>
-        <pre>import { resolveIdentity, verifyIdentity } from 'cashlet-did'
+        <pre>import { resolveIdentity, verifyIdentity } from 'did-beta-bch'
 
 const identity = await resolveIdentity('npub1abc...')
 const result = await verifyIdentity(identity)
-// result.status → "verified" | "invalid-nostr-sig" | "invalid-bch-sig" | "error"
+// result.status → "verified" | "invalid_bch_sig" | "invalid_nostr_sig"
+//                 | "id_mismatch" | "malformed" | "expired"
 
 if (result.status === 'verified') {
   console.log('BCH address proven:', identity.bchAddress)
@@ -82,13 +83,16 @@ if (result.status === 'verified') {
 
         <h3>verifyChallengeProof</h3>
         <p>Verify a challenge-response proof of live key control. No relay needed.</p>
-        <pre>import { verifyChallengeProof } from 'cashlet-did'
+        <pre>import { verifyChallengeProof } from 'did-beta-bch'
 
 const ok = verifyChallengeProof(
   { signature, payload, address },
-  nonce
+  nonce,
+  'https://cashlet.netlify.app/verify',
+  challengeIssuedAt, // Unix seconds issued by this verifier
 )
 // true → live key control confirmed</pre>
+        <p class="note">The verifier must supply its expected audience and trusted challenge issue time; do not trust those values from the submitted proof.</p>
       </section>
 
       <section id="binding">
@@ -96,7 +100,7 @@ const ok = verifyChallengeProof(
         <p>For wallets that want to publish their own identity binding.</p>
 
         <h3>buildBinding</h3>
-        <pre>import { buildBinding, bchSigningPayload, nostrEventTemplate } from 'cashlet-did'
+        <pre>import { buildBinding, bchSigningPayload, signBchMessage, nostrEventTemplate } from 'did-beta-bch'
 import { finalizeEvent } from 'nostr-tools'
 
 // 1. Build the canonical binding
@@ -108,12 +112,12 @@ const binding = await buildBinding(
   previousBindingId,    // optional — for key rotation
 )
 
-// 2. Sign with BCH key
+// 2. Sign the exact v2 message with the BCH key
 const message = bchSigningPayload(binding)
-const bchSig = await signWithBchKey(message, bchPrivkey)
+const signatureBase64 = await signBchMessage(walletSigner, message)
 
 // 3. Build + sign Nostr event
-const template = nostrEventTemplate(binding, { message, signature: bchSig })
+const template = nostrEventTemplate(binding, { message, signatureBase64 })
 const event = finalizeEvent(template, nostrPrivkey)
 
 // 4. Publish
@@ -123,7 +127,7 @@ await publishToRelays(DEFAULT_RELAYS, event)</pre>
       <section id="anchor">
         <h2>BCH-backed commitments</h2>
         <p>Anchor a binding to the BCH blockchain via OP_RETURN for a tamper-evident on-chain timestamp.</p>
-        <pre>import { buildAnchorTx } from 'cashlet-did'
+        <pre>import { buildAnchorTx } from 'did-beta-bch'
 
 const { txHex } = await buildAnchorTx(binding.bindingId, {
   txid: utxo.txid,
@@ -143,7 +147,7 @@ const { txHex } = await buildAnchorTx(binding.bindingId, {
         <p>Any Nostr keypair can issue a signed attestation about a subject identity (kind 30079).</p>
 
         <h3>issueCredential</h3>
-        <pre>import { issueCredential } from 'cashlet-did'
+        <pre>import { issueCredential } from 'did-beta-bch'
 
 const { credential } = await issueCredential(
   'npub1subject...',
@@ -155,7 +159,7 @@ const { credential } = await issueCredential(
 // credential.issuer → issuer hex pubkey</pre>
 
         <h3>resolveCredentials</h3>
-        <pre>import { resolveCredentials } from 'cashlet-did'
+        <pre>import { resolveCredentials } from 'did-beta-bch'
 
 const creds = await resolveCredentials('npub1abc...')
 for (const c of creds) {
@@ -168,7 +172,7 @@ for (const c of creds) {
       <section id="disclosure">
         <h2>Selective disclosure</h2>
         <p>Commit to identity attributes with individual hashes. Reveal only chosen ones to a verifier.</p>
-        <pre>import { buildDisclosure, verifyDisclosure } from 'cashlet-did'
+        <pre>import { buildDisclosure, verifyDisclosure } from 'did-beta-bch'
 
 // Holder: commit to attributes
 const d = await buildDisclosure({
@@ -191,7 +195,7 @@ const { verified, failed } = await verifyDisclosure(revealed, d.commitments)
 
       <section id="relay">
         <h2>Relay client</h2>
-        <pre>import { publishToRelays, queryRelays, DEFAULT_RELAYS } from 'cashlet-did'
+        <pre>import { publishToRelays, queryRelays, DEFAULT_RELAYS } from 'did-beta-bch'
 
 // Publish a signed Nostr event
 const results = await publishToRelays(DEFAULT_RELAYS, signedEvent)
@@ -219,7 +223,7 @@ const events = await queryRelays(DEFAULT_RELAYS, {
         <table>
           <tr><td><code>["d", bindingId]</code></td><td>Addressable event identifier</td></tr>
           <tr><td><code>["bch", address, network]</code></td><td>BCH address and network</td></tr>
-          <tr><td><code>["bch-proof", message, signature]</code></td><td>BCH key ownership proof</td></tr>
+          <tr><td><code>["bch-proof", format, message, signatureBase64]</code></td><td>BCH key ownership proof</td></tr>
           <tr><td><code>["protocol", "cashlet-did", version]</code></td><td>Protocol identifier</td></tr>
           <tr><td><code>["supersedes", previousBindingId]</code></td><td>Key rotation link</td></tr>
           <tr><td><code>["bch-anchor", txid]</code></td><td>On-chain OP_RETURN anchor</td></tr>
@@ -228,14 +232,15 @@ const events = await queryRelays(DEFAULT_RELAYS, {
         <h3>Canonical binding JSON</h3>
         <pre>{
   "protocol": "cashlet-did",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "bindingId": "&lt;sha256-of-this-object-without-bindingId&gt;",
   "bch": { "address": "bitcoincash:zq...", "network": "mainnet" },
   "nostr": { "pubkey": "&lt;hex&gt;" },
   "createdAt": 1234567890,
   "nonce": "&lt;32-byte-random-hex&gt;",
-  "purpose": "identity-binding-v1"
+  "purpose": "identity-binding-v2"
 }</pre>
+        <p class="note">Version 2 uses a typed compact Bitcoin Signed Message proof. Verifiers must reject v1 proof formats rather than interpreting them as v2.</p>
       </section>
 
     </div>
