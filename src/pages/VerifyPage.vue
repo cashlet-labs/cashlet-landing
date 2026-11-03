@@ -6,7 +6,7 @@
         <h1>Verify a Cashlet Identity</h1>
         <p class="sub">
           Cryptographically verify the binding between a Nostr identity and a Bitcoin Cash address.
-          No central identity server or authority. Verification runs in your browser and queries public relays.
+          Binding verification queries public relays without an identity authority. The demo login step uses a Netlify-hosted one-time challenge store and session cookie.
         </p>
       </div>
 
@@ -48,34 +48,34 @@
         <div v-if="bindingVerified === false" class="result-error">✗ {{ verifyError }}</div>
       </div>
 
-      <!-- Step 3: challenge-response -->
+      <!-- Step 3: server-backed dual-key challenge -->
       <div class="card" :class="{ disabled: !bindingVerified }">
-        <div class="card-title"><span class="step">3</span> Live Authentication</div>
+        <div class="card-title"><span class="step">3</span> Server-Backed Authentication</div>
         <p class="card-desc">
-          Generate a one-time challenge. The identity owner signs it with their BCH key in Cashlet
-          (Identity → Advanced → Prove your identity), then pastes the proof here. Cashlet's own
-          wallet is the default signer; an optional connected wallet can also sign.
+          The server issues a one-time challenge. Sign it with the bound BCH key in Cashlet
+          (Identity → Advanced → Prove your identity), then paste that BCH proof here. Your
+          Nostr key will also be asked to sign the same challenge through NIP-07.
         </p>
-        <p class="card-note">The verifier checks the bound BCH address and the fixed audience https://cashlet.netlify.app/verify. Challenges expire after five minutes.</p>
-        <button class="btn-secondary" @click="generateChallenge" :disabled="!bindingVerified">
-          Generate Challenge
+        <p class="card-note">Challenges expire after five minutes and are atomically consumed on successful authentication. A successful response sets an HttpOnly session cookie.</p>
+        <button class="btn-secondary" @click="generateChallenge" :disabled="!bindingVerified || authIssuing">
+          <span v-if="authIssuing" class="spin">⟳</span>
+          <span v-else>Request Server Challenge</span>
         </button>
+        <div v-if="authVerified === true" class="result-ok">
+          <div class="check-row"><span class="check">✓</span> BCH and Nostr signatures verified by the server</div>
+          <div class="check-row"><span class="check">✓</span> Challenge consumed once and login session established</div>
+        </div>
         <div v-if="nonce" class="nonce-box">
           <div class="mono small">{{ nonce }}</div>
           <button class="copy-btn" @click="copy(nonce)">{{ copied ? '✓' : 'Copy' }}</button>
         </div>
         <div v-if="nonce" style="margin-top:12px">
-          <p class="card-desc" style="margin-bottom:8px">Paste the signed proof from Cashlet:</p>
+          <p class="card-desc" style="margin-bottom:8px">Paste the BCH proof from Cashlet. It must include its signature, payload, and address:</p>
           <textarea v-model="proofJson" placeholder='{"signature":"…","payload":"…","address":"…"}' rows="4" />
           <button class="btn-primary" style="margin-top:8px;width:100%" @click="verifyChallenge" :disabled="!proofJson.trim() || authVerifying">
             <span v-if="authVerifying" class="spin">⟳</span>
-            <span v-else>Verify Proof</span>
+            <span v-else>Sign with Nostr and Authenticate</span>
           </button>
-        </div>
-        <div v-if="authVerified === true" class="result-ok">
-          <div class="check-row"><span class="check">✓</span> Live key control proven</div>
-          <div class="check-row"><span class="check">✓</span> Signature matches bound BCH address</div>
-          <div class="check-row"><span class="check">✓</span> Identity authenticated</div>
         </div>
         <div v-if="authVerified === false" class="result-error">✗ {{ authError }}</div>
       </div>
@@ -107,10 +107,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { resolveIdentity, verifyIdentity, verifyChallengeProof, resolveIdentityChain, type ResolvedIdentity } from 'did-beta-bch'
+import {
+  nostrChallengeTemplate,
+  resolveIdentity,
+  resolveIdentityChain,
+  verifyIdentity,
+  type NostrEvent,
+  type ResolvedIdentity,
+} from 'did-beta-bch'
 
 const route = useRoute()
 const verifierAudience = 'https://cashlet.netlify.app/verify'
+const verifierEndpoint = 'https://cashlet.netlify.app/api/auth/verify'
 const npub = ref('')
 const resolving = ref(false)
 const resolveError = ref('')
@@ -127,6 +135,7 @@ const verifyError = ref('')
 
 const nonce = ref('')
 const challengeIssuedAt = ref<number | null>(null)
+const authIssuing = ref(false)
 const copied = ref(false)
 const proofJson = ref('')
 const authVerifying = ref(false)
@@ -161,12 +170,41 @@ async function verifyBinding() {
   } finally { verifying.value = false }
 }
 
-function generateChallenge() {
-  const arr = new Uint8Array(16)
-  crypto.getRandomValues(arr)
-  nonce.value = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
-  challengeIssuedAt.value = Math.floor(Date.now() / 1000)
-  proofJson.value = ''; authVerified.value = null
+async function generateChallenge() {
+  authError.value = ''
+  authVerified.value = null
+  authIssuing.value = true
+  try {
+    if (!resolved.value) throw new Error('Resolve an identity first')
+    const response = await fetch('/api/auth/challenge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ npub: resolved.value.npub }),
+    })
+    const result = await response.json() as {
+      nonce?: string
+      audience?: string
+      endpoint?: string
+      issuedAt?: number
+      error?: string
+    }
+    if (!response.ok) throw new Error(result.error ?? 'Unable to issue a challenge')
+    if (
+      typeof result.nonce !== 'string' ||
+      result.audience !== verifierAudience ||
+      result.endpoint !== verifierEndpoint ||
+      typeof result.issuedAt !== 'number' ||
+      !Number.isSafeInteger(result.issuedAt)
+    ) throw new Error('Server returned an invalid challenge')
+    nonce.value = result.nonce
+    challengeIssuedAt.value = result.issuedAt
+    proofJson.value = ''
+  } catch (e: unknown) {
+    authError.value = e instanceof Error ? e.message : String(e)
+    authVerified.value = false
+  } finally {
+    authIssuing.value = false
+  }
 }
 
 function copy(text: string) {
@@ -178,24 +216,49 @@ function copy(text: string) {
 async function verifyChallenge() {
   authError.value = ''; authVerified.value = null; authVerifying.value = true
   try {
-    const proof = JSON.parse(proofJson.value)
-    if (!resolved.value || proof.address !== resolved.value.bchAddress)
+    const proof: unknown = JSON.parse(proofJson.value)
+    if (!proof || typeof proof !== 'object' || Array.isArray(proof))
+      throw new Error('Paste a valid BCH proof object')
+    const bchProof = proof as Record<string, unknown>
+    if (
+      typeof bchProof.signature !== 'string' ||
+      typeof bchProof.payload !== 'string' ||
+      typeof bchProof.address !== 'string'
+    ) throw new Error('The BCH proof must include signature, payload, and address')
+    if (!resolved.value || bchProof.address !== resolved.value.bchAddress)
       throw new Error('Proof address does not match the BCH address in the published identity')
     if (challengeIssuedAt.value === null)
       throw new Error('Generate a fresh challenge before verifying the proof')
-    const ok = verifyChallengeProof(
-      proof,
+    const nostr = (window as Window & {
+      nostr?: {
+        signEvent(event: ReturnType<typeof nostrChallengeTemplate>): Promise<NostrEvent>
+      }
+    }).nostr
+    if (!nostr) throw new Error('No NIP-07 signer found. Unlock Cashlet and refresh this page.')
+    const challengeEvent = await nostr.signEvent(nostrChallengeTemplate(
       nonce.value,
       verifierAudience,
+      verifierEndpoint,
       challengeIssuedAt.value,
-    )
-    if (!ok) throw new Error('Signature does not match bound BCH address')
+    ))
+    const response = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        nonce: nonce.value,
+        proof: { ...bchProof, nostrEvent: challengeEvent },
+      }),
+    })
+    const result = await response.json() as { authenticated?: boolean; error?: string }
+    if (!response.ok || result.authenticated !== true)
+      throw new Error(result.error ?? 'Server authentication failed')
     authVerified.value = true
     nonce.value = ''
     challengeIssuedAt.value = null
     proofJson.value = ''
-  } catch (e: any) {
-    authError.value = e.message ?? 'Verification failed'
+  } catch (e: unknown) {
+    authError.value = e instanceof Error ? e.message : String(e)
     authVerified.value = false
   } finally { authVerifying.value = false }
 }

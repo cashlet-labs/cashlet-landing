@@ -13,6 +13,8 @@
 
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
 
 [[edge_functions]]
   path = "/.well-known/nostr.json"

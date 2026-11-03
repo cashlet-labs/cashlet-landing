@@ -5,9 +5,10 @@
 // - Writes name→pubkey to Netlify Blobs
 
 import { getStore } from "@netlify/blobs";
-import { queryRelays } from "did-beta-bch";
+import { nip19 } from "nostr-tools";
+import { queryRelays, resolveIdentity, verifyIdentity } from "did-beta-bch";
+import { RELAYS } from "../lib/auth.js";
 
-const RELAYS = ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
 const BINDING_KIND = 30078;
 const VALID_NAME = /^[a-z0-9_-]{1,32}$/;
 
@@ -22,24 +23,39 @@ export default async (req: Request) => {
   if (!name || !VALID_NAME.test(name)) return json({ error: "Invalid name. Use a-z, 0-9, _ or - (max 32 chars)" }, 400);
   if (!bchAddress || !/^(bitcoincash|bchtest|bchreg):/.test(bchAddress)) return json({ error: "Invalid BCH address" }, 400);
 
-  // Find a cashlet-did binding that contains this BCH address
+  // Verify relay candidates cryptographically before reserving a NIP-05 name.
   const bindings = await queryRelays(RELAYS, {
     kinds: [BINDING_KIND],
     "#t": ["cashlet-did"],
     "#bch": [bchAddress],
-    limit: 1,
+    limit: 50,
   });
+  let pubkey: string | null = null;
+  for (const candidate of bindings) {
+    if (!/^[0-9a-f]{64}$/.test(candidate.pubkey)) continue;
+    const identity = await resolveIdentity(nip19.npubEncode(candidate.pubkey), RELAYS);
+    if (!identity || identity.rawEvent.id !== candidate.id || identity.bchAddress !== bchAddress)
+      continue;
+    if ((await verifyIdentity(identity)).status === "verified") {
+      pubkey = identity.pubkey;
+      break;
+    }
+  }
+  if (!pubkey)
+    return json({ error: "No valid v3 cashlet-did binding found for this address. Publish a verified BCH–Nostr binding first." }, 403);
 
-  if (!bindings.length) return json({ error: "No cashlet-did binding found for this address. Publish a BCH–Nostr binding first." }, 403);
-
-  const pubkey = bindings[0].pubkey;
-
-  // First-come first-served
   const store = getStore("nip05");
-  const existing = await store.get(name);
-  if (existing && existing !== pubkey) return json({ error: `'${name}' is already registered` }, 409);
+  const existing = await store.getWithMetadata(name, { consistency: "strong", type: "text" });
+  if (existing?.data === pubkey)
+    return json({ ok: true, handle: `${name}@cashlet.netlify.app`, pubkey });
+  if (existing?.data)
+    return json({ error: `'${name}' is already registered` }, 409);
 
-  await store.set(name, pubkey);
+  const reserved = await store.set(name, pubkey, { onlyIfNew: true });
+  if (!reserved.modified) {
+    const winner = await store.get(name, { consistency: "strong", type: "text" });
+    if (winner !== pubkey) return json({ error: `'${name}' is already registered` }, 409);
+  }
   return json({ ok: true, handle: `${name}@cashlet.netlify.app`, pubkey });
 };
 

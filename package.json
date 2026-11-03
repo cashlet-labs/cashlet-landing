@@ -10,9 +10,10 @@
   },
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
+    "@netlify/blobs": "^11.1.7",
     "@wizardconnect/core": "^0.2.5",
     "@wizardconnect/dapp": "^0.2.2",
-    "did-beta-bch": "2.0.1",
+    "did-beta-bch": "file:../cashlet-did",
     "nostr-tools": "^2.25.2",
     "shiki": "^4.5.0",
     "vue": "^3.5.44",
