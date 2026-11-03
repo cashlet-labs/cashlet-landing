@@ -1,9 +1,7 @@
-import { resolveIdentity, resolveIdentityChain, verifyIdentity } from "did-beta-bch";
 import {
   AUTH_AUDIENCE,
   AUTH_TTL_SECONDS,
   AUTH_VERIFY_ENDPOINT,
-  RELAYS,
   challengeStore,
   jsonResponse,
   randomHex,
@@ -18,25 +16,22 @@ export default async (req: Request) => {
     return jsonResponse({ error: "Request body is too large" }, 413);
 
   let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonResponse({ error: "Invalid JSON" }, 400);
-  }
+  try { body = await req.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body))
     return jsonResponse({ error: "Invalid request" }, 400);
-  const npub = (body as Record<string, unknown>)["npub"];
-  if (typeof npub !== "string" || npub.length > 128)
-    return jsonResponse({ error: "A valid npub is required" }, 400);
 
-  const identity = await resolveIdentity(npub, RELAYS);
-  if (!identity) return jsonResponse({ error: "No valid v3 identity binding found" }, 404);
-  const binding = await verifyIdentity(identity);
-  if (binding.status !== "verified")
-    return jsonResponse({ error: "Identity binding verification failed" }, 403);
-  const chain = await resolveIdentityChain(identity.npub, RELAYS);
-  if (!chain.length || chain[0]?.rawEvent.id !== identity.rawEvent.id)
-    return jsonResponse({ error: "Identity rotation chain is incomplete or invalid" }, 403);
+  const r = body as Record<string, unknown>;
+  const npub = r["npub"];
+  const pubkey = r["pubkey"];
+  const address = r["address"];
+  const bindingId = r["bindingId"];
+
+  if (
+    typeof npub !== "string" || npub.length > 128 ||
+    typeof pubkey !== "string" || !/^[0-9a-f]{64}$/.test(pubkey) ||
+    typeof address !== "string" || !/^(bitcoincash|bchtest):/.test(address) ||
+    typeof bindingId !== "string" || !/^[0-9a-f]{64}$/.test(bindingId)
+  ) return jsonResponse({ error: "Invalid identity fields" }, 400);
 
   const now = Math.floor(Date.now() / 1000);
   const challenge: AuthChallenge = {
@@ -45,9 +40,9 @@ export default async (req: Request) => {
     endpoint: AUTH_VERIFY_ENDPOINT,
     issuedAt: now,
     expiresAt: now + AUTH_TTL_SECONDS,
-    pubkey: identity.pubkey,
-    address: identity.bchAddress,
-    bindingId: identity.bindingId,
+    pubkey,
+    address,
+    bindingId,
   };
   const store = challengeStore();
   const stored = await store.setJSON(challenge.nonce, challenge, { onlyIfNew: true });

@@ -179,7 +179,12 @@ async function generateChallenge() {
     const response = await fetch('/api/auth/challenge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ npub: resolved.value.npub }),
+      body: JSON.stringify({
+        npub: resolved.value.npub,
+        pubkey: resolved.value.pubkey,
+        address: resolved.value.bchAddress,
+        bindingId: resolved.value.bindingId,
+      }),
     })
     const result = await response.json() as {
       nonce?: string
