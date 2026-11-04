@@ -109,6 +109,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   nostrChallengeTemplate,
+  bchChallengePayload,
   resolveIdentity,
   resolveIdentityChain,
   verifyIdentity,
@@ -234,6 +235,8 @@ async function verifyChallenge() {
       throw new Error('Proof address does not match the BCH address in the published identity')
     if (challengeIssuedAt.value === null)
       throw new Error('Generate a fresh challenge before verifying the proof')
+    if (bchProof.payload !== bchChallengePayload(nonce.value, verifierAudience))
+      throw new Error('BCH proof payload does not match the issued challenge')
     const nostr = (window as Window & {
       nostr?: {
         signEvent(event: ReturnType<typeof nostrChallengeTemplate>): Promise<NostrEvent>
