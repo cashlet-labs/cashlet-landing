@@ -12,7 +12,7 @@
       <section id="overview">
         <h1>cashlet-did</h1>
         <p class="lead">Framework-agnostic TypeScript library for BCH–Nostr decentralised identity. Works in browsers, Node.js, and Chrome extensions.</p>
-        <pre class="install">npm install did-beta-bch@2.0.1</pre>
+        <pre class="install">npm install did-beta-bch@3.1.1</pre>
         <div class="badges">
           <span class="badge">TypeScript</span>
           <span class="badge">ESM</span>
@@ -56,6 +56,13 @@ const identity = await resolveIdentity('npub1abc...')
 // identity.bindingId   → SHA-256 of canonical binding
 // identity.createdAt   → unix timestamp</pre>
 
+        <h3>resolveByNip05</h3>
+        <p>Resolve a BCH address from a NIP-05 handle (e.g. <code>user@cashlet.netlify.app</code>).</p>
+        <pre>import { resolveByNip05 } from 'did-beta-bch'
+
+const address = await resolveByNip05('user@cashlet.netlify.app')
+// → "bitcoincash:zq..."  or  null</pre>
+
         <h3>resolveIdentityChain</h3>
         <p>Returns the full key rotation history, newest first.</p>
         <pre>import { resolveIdentityChain } from 'did-beta-bch'
@@ -82,7 +89,7 @@ if (result.status === 'verified') {
 }</pre>
 
         <h3>verifyChallengeProof</h3>
-        <p>Verify a challenge-response proof of live key control. No relay needed.</p>
+        <p>Verify a BCH-only challenge-response proof. For full BCH+Nostr dual-key authentication see <a href="#dualauth">Dual-key authentication</a>.</p>
         <pre>import { verifyChallengeProof } from 'did-beta-bch'
 
 const ok = verifyChallengeProof(
@@ -91,8 +98,49 @@ const ok = verifyChallengeProof(
   'https://cashlet.netlify.app/verify',
   challengeIssuedAt, // Unix seconds issued by this verifier
 )
-// true → live key control confirmed</pre>
+// true → live BCH key control confirmed</pre>
         <p class="note">The verifier must supply its expected audience and trusted challenge issue time; do not trust those values from the submitted proof.</p>
+      </section>
+
+      <section id="dualauth">
+        <h2>Dual-key authentication</h2>
+        <p>Prove simultaneous control of both the BCH key and the Nostr key. Used by the <a href="/verify">/verify</a> page and any server that needs cryptographic login.</p>
+
+        <h3>nostrChallengeTemplate</h3>
+        <p>Build the Nostr event template the wallet must sign (kind 27235). Pass to <code>window.nostr.signEvent</code>.</p>
+        <pre>import { nostrChallengeTemplate } from 'did-beta-bch'
+
+const template = nostrChallengeTemplate(
+  nonce,
+  'https://cashlet.netlify.app/verify', // audience
+  'https://cashlet.netlify.app/api/auth/verify', // endpoint
+  issuedAt, // Unix seconds
+)
+const nostrEvent = await window.nostr.signEvent(template)</pre>
+
+        <h3>verifyDualChallengeProof</h3>
+        <p>Server-side: verify both the BCH signature and the Nostr event in one call.</p>
+        <pre>import { verifyDualChallengeProof } from 'did-beta-bch'
+
+const ok = verifyDualChallengeProof(
+  { signature, payload, address, nostrEvent },
+  {
+    nonce,
+    audience: 'https://cashlet.netlify.app/verify',
+    endpoint: 'https://cashlet.netlify.app/api/auth/verify',
+    issuedAt,
+    address: identity.bchAddress,
+    pubkey: identity.pubkey,
+  }
+)
+// true → both BCH and Nostr key control confirmed</pre>
+
+        <h3>bchChallengePayload</h3>
+        <p>The exact text the BCH key must sign. Useful for building custom signers.</p>
+        <pre>import { bchChallengePayload } from 'did-beta-bch'
+
+const text = bchChallengePayload(nonce, audience)
+// → "cashlet-did/challenge/v3.0.0\n{nonce}\n{audience}"</pre>
       </section>
 
       <section id="binding">
@@ -135,6 +183,7 @@ const { txHex } = await buildAnchorTx(binding.bindingId, {
   valueSats: utxo.valueSats,
   lockingBytecode,  // Uint8Array — P2PKH locking script
   privateKey,       // Uint8Array — BCH private key
+  feeSats: 500,     // optional, defaults to 500
 })
 
 // Broadcast txHex to BCH network
@@ -144,7 +193,7 @@ const { txHex } = await buildAnchorTx(binding.bindingId, {
 
       <section id="credentials">
         <h2>Verifiable credentials</h2>
-        <p>Any Nostr keypair can issue a signed attestation about a subject identity (kind 30079).</p>
+        <p>Any Nostr keypair can issue a signed attestation about a subject identity (kind 30085).</p>
 
         <h3>issueCredential</h3>
         <pre>import { issueCredential } from 'did-beta-bch'
@@ -158,15 +207,42 @@ const { credential } = await issueCredential(
 // credential.id     → Nostr event id
 // credential.issuer → issuer hex pubkey</pre>
 
+        <h3>issueRating</h3>
+        <p>Issue a 1–5 star rating with an optional comment and transaction reference.</p>
+        <pre>import { issueRating } from 'did-beta-bch'
+
+const { credential } = await issueRating(
+  'npub1subject...',
+  5,               // 1–5
+  issuerPrivkey,
+  { comment: 'Fast and reliable', txid: 'abc123...', network: 'mainnet' }
+)</pre>
+
         <h3>resolveCredentials</h3>
         <pre>import { resolveCredentials } from 'did-beta-bch'
 
 const creds = await resolveCredentials('npub1abc...')
 for (const c of creds) {
-  console.log(c.payload.type)    // "merchant"
+  console.log(c.payload.type)    // "merchant" | "rating" | ...
   console.log(c.issuer)          // issuer hex pubkey
   console.log(c.payload.claims)  // { verified_since: "2024-01-01" }
 }</pre>
+
+        <h3>revokeCredential</h3>
+        <p>Publish a NIP-09 deletion event to revoke a previously issued credential.</p>
+        <pre>import { revokeCredential } from 'did-beta-bch'
+
+await revokeCredential(credential.id, issuerPrivkey)</pre>
+
+        <h3>scoreReputation</h3>
+        <p>Compute a 0–100 reputation score from all credentials issued to an npub.</p>
+        <pre>import { scoreReputation } from 'did-beta-bch'
+
+const rep = await scoreReputation('npub1abc...')
+// rep.score          → 0–100
+// rep.averageRating  → 1–5 or null
+// rep.credentialCount → total credentials
+// rep.uniqueIssuers  → number of distinct issuers</pre>
       </section>
 
       <section id="disclosure">
@@ -193,6 +269,48 @@ const { verified, failed } = await verifyDisclosure(revealed, d.commitments)
         <p class="note">Hash format: <code>SHA-256("cashlet-did/attr/{key}:{value}")</code></p>
       </section>
 
+      <section id="nip98">
+        <h2>NIP-98 HTTP Auth</h2>
+        <p>Attach a Nostr-signed Authorization header to HTTP requests, optionally resolving the signer's BCH binding for full identity verification.</p>
+
+        <h3>buildHttpAuthEventAsync</h3>
+        <p>Client-side: build the event template, sign it with <code>window.nostr.signEvent</code>, then base64-encode and send as <code>Authorization: Nostr &lt;base64&gt;</code>.</p>
+        <pre>import { buildHttpAuthEventAsync } from 'did-beta-bch'
+
+const template = await buildHttpAuthEventAsync(url, 'POST', bodyBytes)
+const signed = await window.nostr.signEvent(template)
+const header = 'Nostr ' + btoa(JSON.stringify(signed))</pre>
+
+        <h3>verifyHttpAuth</h3>
+        <p>Server-side: verify the Authorization header. Set <code>verifyBch: true</code> to also resolve and verify the signer's BCH binding.</p>
+        <pre>import { verifyHttpAuth } from 'did-beta-bch'
+
+const result = await verifyHttpAuth(
+  req.headers.authorization,
+  'https://example.com/api/endpoint',
+  'POST',
+  { body: bodyBytes, verifyBch: true }
+)
+// result.valid      → boolean
+// result.pubkey     → signer hex pubkey
+// result.bchAddress → resolved BCH address (if verifyBch: true)</pre>
+      </section>
+
+      <section id="nip89">
+        <h2>NIP-89 App Handler</h2>
+        <p>Advertise your app as a handler for cashlet-did identity events (kind 30078) so Nostr clients can route users to it.</p>
+        <pre>import { buildAppHandlerEvent } from 'did-beta-bch'
+import { finalizeEvent } from 'nostr-tools'
+
+const template = buildAppHandlerEvent(
+  'My BCH App',
+  'https://myapp.example.com',
+  'BCH wallet with decentralised identity'
+)
+const event = finalizeEvent(template, nostrPrivkey)
+await publishToRelays(DEFAULT_RELAYS, event)</pre>
+      </section>
+
       <section id="relay">
         <h2>Relay client</h2>
         <pre>import { publishToRelays, queryRelays, DEFAULT_RELAYS } from 'did-beta-bch'
@@ -217,6 +335,10 @@ const events = await queryRelays(DEFAULT_RELAYS, {
         <table>
           <tr><td><code>30078</code></td><td>Identity binding — BCH address + Nostr pubkey + BCH ownership proof</td></tr>
           <tr><td><code>30079</code></td><td>Verifiable credential — third-party attestation about a subject npub</td></tr>
+          <tr><td><code>30080</code></td><td>Rotation authorization — authorises a new binding to supersede the current one</td></tr>
+          <tr><td><code>30085</code></td><td>Credential (kind used by issueCredential / issueRating)</td></tr>
+          <tr><td><code>27235</code></td><td>Nostr challenge — signed by wallet during dual-key authentication</td></tr>
+          <tr><td><code>31990</code></td><td>NIP-89 App Handler — advertises app support for kind 30078</td></tr>
         </table>
 
         <h3>Binding event tags</h3>
@@ -232,15 +354,15 @@ const events = await queryRelays(DEFAULT_RELAYS, {
         <h3>Canonical binding JSON</h3>
         <pre>{
   "protocol": "cashlet-did",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "bindingId": "&lt;sha256-of-this-object-without-bindingId&gt;",
   "bch": { "address": "bitcoincash:zq...", "network": "mainnet" },
   "nostr": { "pubkey": "&lt;hex&gt;" },
   "createdAt": 1234567890,
   "nonce": "&lt;32-byte-random-hex&gt;",
-  "purpose": "identity-binding-v2"
+  "purpose": "identity-binding-v3"
 }</pre>
-        <p class="note">Version 2 uses a typed compact Bitcoin Signed Message proof. Verifiers must reject v1 proof formats rather than interpreting them as v2.</p>
+        <p class="note">Version 3 uses a typed compact Bitcoin Signed Message proof. Verifiers must reject v1/v2 proof formats rather than interpreting them as v3.</p>
       </section>
 
     </div>
@@ -253,10 +375,13 @@ const sections = [
   { id: 'quickstart',  label: 'Quick start' },
   { id: 'resolve',     label: 'Resolution' },
   { id: 'verify',      label: 'Verification' },
+  { id: 'dualauth',    label: 'Dual-key auth' },
   { id: 'binding',     label: 'Binding construction' },
   { id: 'anchor',      label: 'BCH commitments' },
   { id: 'credentials', label: 'Credentials' },
   { id: 'disclosure',  label: 'Selective disclosure' },
+  { id: 'nip98',       label: 'NIP-98 HTTP Auth' },
+  { id: 'nip89',       label: 'NIP-89 App Handler' },
   { id: 'relay',       label: 'Relay client' },
   { id: 'protocol',    label: 'Protocol spec' },
 ]
